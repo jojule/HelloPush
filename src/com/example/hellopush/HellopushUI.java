@@ -1,6 +1,9 @@
 package com.example.hellopush;
 
-import java.util.HashSet;
+import java.util.Collections;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import com.vaadin.annotations.Push;
@@ -20,34 +23,43 @@ import com.vaadin.ui.VerticalLayout;
 @Push
 public class HellopushUI extends UI {
 
-    static HashSet<HellopushUI> uis = new HashSet<HellopushUI>();
+    static private final ExecutorService service = Executors
+            .newSingleThreadExecutor();
+    static private final Set<HellopushUI> chatroom = Collections
+            .newSetFromMap(new ConcurrentHashMap<HellopushUI, Boolean>());
 
-    TextField message = new TextField();
-    Button button = new Button("Send");
+    private final TextField message = new TextField();
+    private final Button button = new Button("Send message");
 
     @Override
     protected void init(VaadinRequest request) {
-        buildLayout();
+        chatroom.add(this);
 
-        button.addClickListener(new SendButtonListener());
+        buildLayout();
+        wireButton();
+    }
+
+    private void wireButton() {
+        button.addClickListener(new ClickListener() {
+            public void buttonClick(ClickEvent event) {
+                service.execute(new SpeakAction(HellopushUI.this, message
+                        .getValue()));
+                message.setValue("");
+                message.focus();
+            }
+        });
         addShortcutListener(new ShortcutListener("Enter", KeyCode.ENTER, null) {
             @Override
             public void handleAction(Object sender, Object target) {
                 button.click();
             }
         });
-
-        synchronized (uis) {
-            uis.add(this);
-        }
     }
 
     @Override
     public void close() {
         super.close();
-        synchronized (uis) {
-            uis.remove(this);
-        }
+        chatroom.remove(this);
     }
 
     private void buildLayout() {
@@ -62,25 +74,25 @@ public class HellopushUI extends UI {
         layout.setSpacing(true);
     }
 
-    class SendButtonListener implements ClickListener {
-        public void buttonClick(ClickEvent event) {
-            final String m = message.getValue();
-            message.setValue("");
-            message.focus();
-            Executors.newSingleThreadExecutor().execute(new Runnable() {
-                public void run() {
-                    synchronized (uis) {
-                        for (HellopushUI ui : uis) {
-                            ui.access(new Runnable() {
-                                public void run() {
-                                    Notification.show(m);
-                                }
-                            });
+    private class SpeakAction implements Runnable {
+        String message;
+        HellopushUI speaker;
+
+        SpeakAction(HellopushUI speaker, String message) {
+            this.speaker = speaker;
+            this.message = message;
+        }
+
+        public void run() {
+            for (HellopushUI ui : chatroom) {
+                if (ui != speaker) {
+                    ui.access(new Runnable() {
+                        public void run() {
+                            Notification.show(message);
                         }
-                    }
+                    });
                 }
-            });
+            }
         }
     }
-
 }
