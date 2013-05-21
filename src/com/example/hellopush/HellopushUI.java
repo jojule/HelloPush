@@ -57,7 +57,7 @@ public class HellopushUI extends UI {
     }
 
     @Override
-    public void close() {
+    public void detach() {
         super.close();
         chatroom.remove(this);
     }
